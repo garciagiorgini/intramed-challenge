@@ -1,4 +1,4 @@
-import { Controller, Post, UseGuards } from '@nestjs/common';
+import { Controller, Logger, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 
@@ -13,13 +13,28 @@ import { SwapiService } from './swapi-sync/swapi-sync.service';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(Role.ADMIN)
 export class SwapiSyncController {
+  private readonly logger = new Logger(SwapiSyncController.name);
+
   constructor(
     private readonly swapiSyncService: SwapiService,
   ) {}
 
   @Post('sync')
   @ApiOperation({ summary: 'Synchronize movies from SWAPI' })
-  sync() {
-    return this.swapiSyncService.sync();
+  async sync() {
+    this.logger.log('Petición recibida para sincronizar películas desde SWAPI');
+    try {
+      const result = await this.swapiSyncService.sync();
+      this.logger.log(
+        `Sincronización finalizada correctamente. Películas procesadas: ${result.processed}`,
+      );
+      return result;
+    } catch (error) {
+      this.logger.error(
+        'Error durante la sincronización de películas desde SWAPI',
+        error instanceof Error ? error.stack : error,
+      );
+      throw error;
+    }
   }
 }

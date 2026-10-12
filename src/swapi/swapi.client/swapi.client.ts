@@ -1,6 +1,7 @@
 import {
   Injectable,
   BadGatewayException,
+  Logger,
 } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
@@ -30,6 +31,8 @@ export interface SwapiFilmResult {
 
 @Injectable()
 export class SwapiClient {
+  private readonly logger = new Logger(SwapiClient.name);
+
   constructor(
     private readonly http: HttpService,
     private readonly config: ConfigService,
@@ -42,6 +45,7 @@ export class SwapiClient {
     );
 
     try {
+      this.logger.log(`Consultando películas desde SWAPI (${baseUrl}/films)...`);
       const response = await firstValueFrom(
         this.http.get<{ result: SwapiFilmResult[] }>(
           `${baseUrl}/films`,
@@ -50,13 +54,21 @@ export class SwapiClient {
       );
 
       if (!Array.isArray(response.data?.result)) {
-        throw new Error('Invalid SWAPI response');
+        throw new Error('Respuesta de SWAPI no contiene un arreglo de resultados válido');
       }
 
+      this.logger.log(
+        `Se obtuvieron exitosamente ${response.data.result.length} películas de SWAPI`,
+      );
       return response.data.result;
-    } catch {
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Falló la consulta de películas a SWAPI en ${baseUrl}/films: ${message}`,
+        err instanceof Error ? err.stack : undefined,
+      );
       throw new BadGatewayException(
-        'Error al consultar SWAPI',
+        `Error al consultar SWAPI: ${message}`,
       );
     }
   }

@@ -1,0 +1,30 @@
+# 1. Registrar usuario común
+# 2. Login usuario común
+# 3. Login admin (obtener token ADMIN)
+# 4. Sync SWAPI (requiere token ADMIN)
+
+# Sincronización SWAPI (requiere Bearer Token con role: ADMIN)
+# Obtener token ejecutando el login de admin (al final de este archivo)
+curl -X POST http://localhost:3000/api/admin/movies/sync \
+  -H "Authorization: Bearer <ADMIN_TOKEN>"
+  
+  curl -i -X POST http://localhost:3000/api/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "email": "usuario@example.com",
+    "password": "una-clave-segura-123"
+  }'
+
+  curl -X POST http://localhost:3000/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "email": "usuario@example.com",
+    "password": "una-clave-segura-123"
+  }'
+
+   curl -X POST http://localhost:3000/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "email": "admin@example.com",
+    "password": "una-clave-local-segura"
+  }'
