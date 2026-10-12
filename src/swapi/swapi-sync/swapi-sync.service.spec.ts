@@ -1,15 +1,15 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { SwapiSyncService } from './swapi-sync.service';
+import { SwapiService } from './swapi-sync.service';
 
-describe('SwapiSyncService', () => {
-  let service: SwapiSyncService;
+describe('SwapiService', () => {
+  let service: SwapiService;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [SwapiSyncService],
+      providers: [SwapiService],
     }).compile();
 
-    service = module.get<SwapiSyncService>(SwapiSyncService);
+    service = module.get<SwapiService>(SwapiService);
   });
 
   it('should be defined', () => {

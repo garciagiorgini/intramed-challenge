@@ -1,15 +1,15 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { SyncProcessor } from './sync.processor';
+import { SwapiProcessor } from './sync.processor';
 
-describe('SyncProcessor', () => {
-  let provider: SyncProcessor;
+describe('SwapiProcessor', () => {
+  let provider: SwapiProcessor;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
-      providers: [SyncProcessor],
+      providers: [SwapiProcessor],
     }).compile();
 
-    provider = module.get<SyncProcessor>(SyncProcessor);
+    provider = module.get<SwapiProcessor>(SwapiProcessor);
   });
 
   it('should be defined', () => {
