@@ -22,25 +22,27 @@ export class MoviesController {
   constructor(private readonly moviesService: MoviesService) {}
 
   @Get()
-  findAll() {
+  async findAll() {
     return this.moviesService.findAll();
   }
 
   @Get(':id')
   @UseGuards(JwtAuthGuard)
-  findOne(@Param('id') id: string) {
-return this.moviesService.findOne(id); }
+  async findOne(@Param('id') id: string) {
+    return this.moviesService.findOne(id);
+  }
 
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)
-  create(@Body() dto: CreateMovieDto) {
-return this.moviesService.create(dto); }
+  async create(@Body() dto: CreateMovieDto) {
+    return this.moviesService.create(dto);
+  }
 
   @Patch(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)
-  update(
+  async update(
     @Param('id') id: string,
     @Body() dto: UpdateMovieDto,
   ) {
@@ -50,7 +52,7 @@ return this.moviesService.create(dto); }
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN)
-  remove(@Param('id') id: string) {
+  async remove(@Param('id') id: string) {
     return this.moviesService.remove(id);
   }
 }
