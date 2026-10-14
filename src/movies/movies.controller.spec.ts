@@ -7,6 +7,7 @@ import { vi } from 'vitest';
 
 import { MoviesController } from './movies.controller';
 import { MoviesService } from './application/movies.service';
+import { FindMoviesQueryDto } from './dto/find-movies-query.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { ROLES_KEY } from '../common/decorators/roles.decorator';
@@ -51,9 +52,10 @@ describe('MoviesController', () => {
   });
 
   describe('findAll', () => {
-    it('should call moviesService.findAll', async () => {
-      await controller.findAll();
-      expect(service.findAll).toHaveBeenCalled();
+    it('should call moviesService.findAll with the query', async () => {
+      const query = Object.assign(new FindMoviesQueryDto(), { page: 2, title: 'hope' });
+      await controller.findAll(query);
+      expect(service.findAll).toHaveBeenCalledWith(query);
     });
   });
 

@@ -20,7 +20,7 @@ Resuelve el challenge [Backend Nest Ssr. Test](https://conexatech.notion.site/Ba
 | Integración externa | `@nestjs/axios` contra `https://www.swapi.tech/api` |
 | Documentación | Swagger (`@nestjs/swagger` con el plugin del CLI) |
 | Tests | Vitest + Supertest |
-| Infra local | Docker Compose (Postgres + Redis) |
+| Infra | Docker Compose (Postgres) en local · `Dockerfile` para deploy en Render |
 
 ---
 
@@ -68,16 +68,43 @@ Todos los endpoints llevan el prefijo `/api`.
 | --- | --- | --- | --- |
 | `POST` | `/api/auth/register` | Público | Registra un usuario con rol `USER` |
 | `POST` | `/api/auth/login` | Público | Devuelve `access_token` (JWT) |
-| `GET` | `/api/movies` | Público | Lista las películas |
+| `GET` | `/api/movies` | Público | Lista las películas, con paginación, filtros y orden |
 | `GET` | `/api/movies/:id` | `USER` o `ADMIN` | Detalle de una película |
 | `POST` | `/api/movies` | `ADMIN` | Crea una película |
 | `PATCH` | `/api/movies/:id` | `ADMIN` | Actualiza una película |
 | `DELETE` | `/api/movies/:id` | `ADMIN` | Elimina una película |
 | `POST` | `/api/admin/movies/sync` | `ADMIN` | Sincroniza las películas desde SWAPI |
 
+### Listado: paginación, filtros y orden
+
+`GET /api/movies` acepta estos query params, todos opcionales:
+
+| Param | Descripción | Default |
+| --- | --- | --- |
+| `page` | Número de página, desde 1 | `1` |
+| `limit` | Resultados por página (1 a 100) | `10` |
+| `title`, `director`, `producer` | Búsqueda parcial sin distinguir mayúsculas | — |
+| `episodeId` | Número de episodio exacto | — |
+| `releasedFrom`, `releasedTo` | Rango de fecha de estreno (`YYYY-MM-DD`, inclusive) | — |
+| `sortBy` | `title`, `episodeId`, `releaseDate` o `createdAt` | `title` |
+| `order` | `asc` o `desc` | `asc` |
+
+```bash
+curl 'http://localhost:3000/api/movies?releasedFrom=1977-01-01&releasedTo=1983-12-31&sortBy=releaseDate&order=desc&page=1&limit=5'
+```
+
+```json
+{
+  "data": [{ "id": "…", "title": "Return of the Jedi", "episodeId": 6, "…": "…" }],
+  "meta": { "total": 3, "page": 1, "limit": 5, "totalPages": 1 }
+}
+```
+
+El conteo y la página se consultan en una misma transacción. Además, el orden siempre desempata por `id`, así que la paginación es estable aunque haya valores repetidos.
+
 Códigos de error:
 
-- `400`: validación fallida.
+- `400`: validación fallida (también para query params inválidos, por ejemplo `limit=1000` o un `sortBy` desconocido).
 - `401`: sin token o con un token inválido o vencido.
 - `403`: el rol no alcanza.
 - `404`: la película no existe.
@@ -116,14 +143,13 @@ cp .env.example .env
 | Variable | Descripción | Default |
 | --- | --- | --- |
 | `DATABASE_URL` | Conexión a Postgres | coincide con `compose.yml` |
-| `REDIS_HOST` / `REDIS_PORT` | Conexión a Redis | `localhost` / `6379` |
 | `JWT_SECRET` | Clave de firma del JWT. **Cambiala por un valor largo y aleatorio** | — |
 | `JWT_EXPIRES_IN` | Vencimiento del token | `15m` |
 | `PORT` | Puerto HTTP | `3000` |
 | `SWAPI_BASE_URL` | URL base de SWAPI (opcional) | `https://www.swapi.tech/api` |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Credenciales del admin que crea el seed | — |
 
-### 3. Levantar Postgres y Redis
+### 3. Levantar Postgres
 
 ```bash
 docker compose up -d
@@ -168,8 +194,8 @@ ADMIN_TOKEN=$(curl -s -X POST http://localhost:3000/api/auth/login \
 curl -X POST http://localhost:3000/api/admin/movies/sync \
   -H "Authorization: Bearer $ADMIN_TOKEN"
 
-# 4. Listar películas (público)
-curl http://localhost:3000/api/movies
+# 4. Listar películas (público, paginado)
+curl 'http://localhost:3000/api/movies?page=1&limit=5&sortBy=episodeId'
 
 # 5. Login como usuario común y ver el detalle
 USER_TOKEN=$(curl -s -X POST http://localhost:3000/api/auth/login \
@@ -198,16 +224,17 @@ En [curls.txt](curls.txt) hay más ejemplos.
 ```bash
 npm run test       # tests unitarios (Vitest)
 npm run test:cov   # tests con reporte de cobertura en ./coverage
-npm run test:e2e   # tests end-to-end (requieren Postgres y Redis levantados y las migraciones aplicadas)
+npm run test:e2e   # tests end-to-end (requieren Postgres levantado y las migraciones aplicadas)
 ```
 
 ### Unitarios
 
-No necesitan base de datos ni Redis porque los repositorios y el cliente HTTP se mockean. Cubren:
+No necesitan base de datos porque los repositorios y el cliente HTTP se mockean. Cubren:
 
 - **Auth:** registro (email duplicado, normalización, hash) y login (credenciales inválidas, emisión del token).
 - **Movies:**
-  - Lógica del servicio: creación, actualización parcial, `404`, conversión de fechas.
+  - Lógica del servicio: creación, actualización parcial, `404`, conversión de fechas, paginación (`skip`/`take`, `meta`) y mapeo de filtros.
+  - Repositorio: armado del `where` (filtros parciales, rango de fechas), orden estable y conteo en transacción.
   - Controlador.
   - **Restricción de acceso:**
     - Metadata de `@Roles` y de los guards.
@@ -222,9 +249,53 @@ No necesitan base de datos ni Redis porque los repositorios y el cliente HTTP se
 
 - Registro, email duplicado (`409`), validación (`400`) y login (`401` y token).
 - CRUD de películas con tokens de `USER` y `ADMIN`: verifica `401`, `403`, `200`/`201` y `404` después de borrar.
-- Que Swagger exponga la documentación.
+- Listado paginado con filtros contra la base real y validación de los query params (`400`).
+- Que Swagger exponga la documentación, incluidos los query params del listado.
 
 Crea su propio admin y usuario con emails únicos y los borra al terminar, así no ensucia los datos locales.
+
+---
+
+## Deploy en Render
+
+El [Dockerfile](Dockerfile) tiene dos etapas:
+
+- **Build:** genera el cliente de Prisma, compila la API y compila `prisma/seed.ts`.
+- **Runtime:** instala solo las dependencias de producción.
+
+Al arrancar, el contenedor:
+
+1. Aplica las migraciones (`prisma migrate deploy`).
+2. Si `ADMIN_EMAIL` está definida, crea o actualiza el usuario `ADMIN`.
+3. Inicia la API en el puerto que indique `PORT` (Render la define automáticamente).
+
+### Pasos
+
+1. Crear una base **PostgreSQL** en Render y copiar su *Internal Database URL*.
+2. Crear un **Web Service** desde el repositorio, rama `deploy`, con runtime **Docker**.
+3. Cargar las variables de entorno:
+
+   | Variable | Valor |
+   | --- | --- |
+   | `DATABASE_URL` | La *Internal Database URL* del paso 1 |
+   | `JWT_SECRET` | Un valor largo y aleatorio |
+   | `JWT_EXPIRES_IN` | Opcional, por defecto `15m` |
+   | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Credenciales del administrador |
+
+4. Deployar. Swagger queda en `https://<servicio>.onrender.com/api/docs`.
+
+> En el plan gratuito de Render el servicio se duerme cuando no tiene tráfico, así que el primer request después de un rato puede tardar unos segundos.
+
+Para probar la imagen en local, con el Postgres de `compose.yml`:
+
+```bash
+docker build -t intramed-api .
+docker run --rm --network host -e PORT=3000 \
+  -e DATABASE_URL="postgresql://starwars:local_dev_password@localhost:5432/starwars?schema=public" \
+  -e JWT_SECRET=un-secreto-local \
+  -e ADMIN_EMAIL=admin@example.com -e ADMIN_PASSWORD=una-clave-local-segura \
+  intramed-api
+```
 
 ---
 
