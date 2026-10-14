@@ -20,7 +20,7 @@ Resuelve el challenge [Backend Nest Ssr. Test](https://conexatech.notion.site/Ba
 | Integración externa | `@nestjs/axios` contra `https://www.swapi.tech/api` |
 | Documentación | Swagger (`@nestjs/swagger` con el plugin del CLI) |
 | Tests | Vitest + Supertest |
-| Infra local | Docker Compose (Postgres + Redis) |
+| Infra | Docker Compose (Postgres) en local · `Dockerfile` para deploy en Render |
 
 ---
 
@@ -116,14 +116,13 @@ cp .env.example .env
 | Variable | Descripción | Default |
 | --- | --- | --- |
 | `DATABASE_URL` | Conexión a Postgres | coincide con `compose.yml` |
-| `REDIS_HOST` / `REDIS_PORT` | Conexión a Redis | `localhost` / `6379` |
 | `JWT_SECRET` | Clave de firma del JWT. **Cambiala por un valor largo y aleatorio** | — |
 | `JWT_EXPIRES_IN` | Vencimiento del token | `15m` |
 | `PORT` | Puerto HTTP | `3000` |
 | `SWAPI_BASE_URL` | URL base de SWAPI (opcional) | `https://www.swapi.tech/api` |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Credenciales del admin que crea el seed | — |
 
-### 3. Levantar Postgres y Redis
+### 3. Levantar Postgres
 
 ```bash
 docker compose up -d
@@ -198,12 +197,12 @@ En [curls.txt](curls.txt) hay más ejemplos.
 ```bash
 npm run test       # tests unitarios (Vitest)
 npm run test:cov   # tests con reporte de cobertura en ./coverage
-npm run test:e2e   # tests end-to-end (requieren Postgres y Redis levantados y las migraciones aplicadas)
+npm run test:e2e   # tests end-to-end (requieren Postgres levantado y las migraciones aplicadas)
 ```
 
 ### Unitarios
 
-No necesitan base de datos ni Redis porque los repositorios y el cliente HTTP se mockean. Cubren:
+No necesitan base de datos porque los repositorios y el cliente HTTP se mockean. Cubren:
 
 - **Auth:** registro (email duplicado, normalización, hash) y login (credenciales inválidas, emisión del token).
 - **Movies:**
@@ -225,6 +224,49 @@ No necesitan base de datos ni Redis porque los repositorios y el cliente HTTP se
 - Que Swagger exponga la documentación.
 
 Crea su propio admin y usuario con emails únicos y los borra al terminar, así no ensucia los datos locales.
+
+---
+
+## Deploy en Render
+
+El [Dockerfile](Dockerfile) tiene dos etapas:
+
+- **Build:** genera el cliente de Prisma, compila la API y compila `prisma/seed.ts`.
+- **Runtime:** instala solo las dependencias de producción.
+
+Al arrancar, el contenedor:
+
+1. Aplica las migraciones (`prisma migrate deploy`).
+2. Si `ADMIN_EMAIL` está definida, crea o actualiza el usuario `ADMIN`.
+3. Inicia la API en el puerto que indique `PORT` (Render la define automáticamente).
+
+### Pasos
+
+1. Crear una base **PostgreSQL** en Render y copiar su *Internal Database URL*.
+2. Crear un **Web Service** desde el repositorio, rama `deploy`, con runtime **Docker**.
+3. Cargar las variables de entorno:
+
+   | Variable | Valor |
+   | --- | --- |
+   | `DATABASE_URL` | La *Internal Database URL* del paso 1 |
+   | `JWT_SECRET` | Un valor largo y aleatorio |
+   | `JWT_EXPIRES_IN` | Opcional, por defecto `15m` |
+   | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Credenciales del administrador |
+
+4. Deployar. Swagger queda en `https://<servicio>.onrender.com/api/docs`.
+
+> En el plan gratuito de Render el servicio se duerme cuando no tiene tráfico, así que el primer request después de un rato puede tardar unos segundos.
+
+Para probar la imagen en local, con el Postgres de `compose.yml`:
+
+```bash
+docker build -t intramed-api .
+docker run --rm --network host -e PORT=3000 \
+  -e DATABASE_URL="postgresql://starwars:local_dev_password@localhost:5432/starwars?schema=public" \
+  -e JWT_SECRET=un-secreto-local \
+  -e ADMIN_EMAIL=admin@example.com -e ADMIN_PASSWORD=una-clave-local-segura \
+  intramed-api
+```
 
 ---
 

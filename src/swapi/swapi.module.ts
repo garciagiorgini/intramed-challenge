@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
-import { BullModule } from '@nestjs/bullmq';
 import { SwapiClient } from './swapi.client/swapi.client';
 import { SwapiService } from './swapi-sync/swapi-sync.service';
 import { SwapiProcessor } from './sync.processor/sync.processor';
@@ -11,7 +10,6 @@ import { MoviesModule } from '../movies/movies.module';
 @Module({
   imports: [
     HttpModule,
-    BullModule.registerQueue({ name: 'swapi-sync' }),
     MoviesModule,
   ],
   controllers: [SwapiSyncController],

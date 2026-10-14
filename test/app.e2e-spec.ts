@@ -9,7 +9,7 @@ import { AppModule } from './../src/app.module';
 import { configureApp } from './../src/app.setup';
 import { PrismaService } from './../src/prisma/prisma.service';
 
-// Requiere Postgres y Redis levantados (docker compose up -d) y las migraciones aplicadas.
+// Requiere Postgres levantado (docker compose up -d) y las migraciones aplicadas.
 describe('Movies API (e2e)', () => {
   let app: INestApplication<App>;
   let prisma: PrismaService;
