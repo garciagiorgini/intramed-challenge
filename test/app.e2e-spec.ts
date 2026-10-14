@@ -131,12 +131,41 @@ describe('Movies API (e2e)', () => {
       expect(response.body.title).toBe('Rogue One');
     });
 
-    it('GET /api/movies es público', async () => {
+    it('GET /api/movies es público y devuelve resultados paginados', async () => {
       const response = await request(app.getHttpServer())
         .get('/api/movies')
         .expect(200);
 
-      expect(response.body.some((m: { id: string }) => m.id === movieId)).toBe(true);
+      expect(response.body.meta).toMatchObject({ page: 1, limit: 10 });
+      expect(Array.isArray(response.body.data)).toBe(true);
+    });
+
+    it('GET /api/movies filtra por título y rango de fechas', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/api/movies')
+        .query({
+          title: 'rogue one',
+          releasedFrom: '2016-01-01',
+          releasedTo: '2016-12-31',
+          limit: 5,
+        })
+        .expect(200);
+
+      expect(response.body.data.map((m: { id: string }) => m.id)).toContain(movieId);
+      expect(response.body.meta).toMatchObject({ page: 1, limit: 5 });
+
+      const empty = await request(app.getHttpServer())
+        .get('/api/movies')
+        .query({ title: 'rogue one', releasedTo: '2000-01-01' })
+        .expect(200);
+
+      expect(empty.body.data.map((m: { id: string }) => m.id)).not.toContain(movieId);
+    });
+
+    it('GET /api/movies valida los parámetros de paginación (400)', async () => {
+      await request(app.getHttpServer()).get('/api/movies').query({ limit: 1000 }).expect(400);
+      await request(app.getHttpServer()).get('/api/movies').query({ page: 0 }).expect(400);
+      await request(app.getHttpServer()).get('/api/movies').query({ sortBy: 'password' }).expect(400);
     });
 
     it('GET /api/movies/:id: sin token devuelve 401', () => {
@@ -197,6 +226,13 @@ describe('Movies API (e2e)', () => {
         .expect(200);
 
       expect(response.body.paths).toHaveProperty('/api/movies/{id}');
+
+      const params = response.body.paths['/api/movies'].get.parameters.map(
+        (p: { name: string }) => p.name,
+      );
+      expect(params).toEqual(
+        expect.arrayContaining(['page', 'limit', 'title', 'releasedFrom', 'sortBy', 'order']),
+      );
     });
   });
 });

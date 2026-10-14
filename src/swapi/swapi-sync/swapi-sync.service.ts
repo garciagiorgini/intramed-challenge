@@ -30,12 +30,9 @@ export class SwapiService {
         this.logger.log(`Procesando película: "${title}" (UID SWAPI: ${film.uid})`);
         const movieData = this.processor.process(film);
 
-        const { externalId, ...data } = movieData;
-
-        await this.moviesRepository.upsertByExternalId(
-          externalId as string,
-          data,
-        );
+        // externalId tiene que viajar en los datos: si no, el create del upsert
+        // guarda null y cada sincronización duplica las películas.
+        await this.moviesRepository.upsertByExternalId(film.uid, movieData);
 
         processed++;
         this.logger.log(`Película "${title}" sincronizada correctamente.`);

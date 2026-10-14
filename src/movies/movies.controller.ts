@@ -5,6 +5,7 @@ import {
   Patch,
   Delete,
   Param,
+  Query,
   Body,
   UseGuards,
 } from '@nestjs/common';
@@ -20,6 +21,7 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { MoviesService } from './application/movies.service';
 import { CreateMovieDto } from './dto/create-movie.dto';
+import { FindMoviesQueryDto } from './dto/find-movies-query.dto';
 import { UpdateMovieDto } from './dto/update-movie.dto';
 
 @ApiTags('Movies')
@@ -28,9 +30,9 @@ export class MoviesController {
   constructor(private readonly moviesService: MoviesService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List all movies' })
-  async findAll() {
-    return this.moviesService.findAll();
+  @ApiOperation({ summary: 'List movies (paginated, with filters)' })
+  async findAll(@Query() query: FindMoviesQueryDto) {
+    return this.moviesService.findAll(query);
   }
 
   @Get(':id')

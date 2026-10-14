@@ -6,6 +6,7 @@ import {
 import { Prisma } from '@prisma/client';
 
 import { CreateMovieDto } from '../dto/create-movie.dto';
+import { FindMoviesQueryDto } from '../dto/find-movies-query.dto';
 import { UpdateMovieDto } from '../dto/update-movie.dto';
 import {
   MOVIES_REPOSITORY,
@@ -78,8 +79,37 @@ export class MoviesService {
     return this.moviesRepository.update(id, data);
   }
 
-  async findAll() {
-    return this.moviesRepository.findAll();
+  async findAll(query: FindMoviesQueryDto) {
+    const { page, limit } = query;
+
+    const { items, total } = await this.moviesRepository.findAll({
+      filters: {
+        title: query.title?.trim() || undefined,
+        director: query.director?.trim() || undefined,
+        producer: query.producer?.trim() || undefined,
+        episodeId: query.episodeId,
+        releasedFrom: query.releasedFrom
+          ? new Date(`${query.releasedFrom}T00:00:00.000Z`)
+          : undefined,
+        releasedTo: query.releasedTo
+          ? new Date(`${query.releasedTo}T00:00:00.000Z`)
+          : undefined,
+      },
+      skip: (page - 1) * limit,
+      take: limit,
+      sortBy: query.sortBy,
+      order: query.order,
+    });
+
+    return {
+      data: items,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   }
 
   async findById(id: string) {
