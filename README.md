@@ -1,118 +1,238 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Star Wars Movies API
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Backend en **NestJS** para gestionar películas. Toma los datos de la API pública de Star Wars ([swapi.tech](https://www.swapi.tech)) y suma autenticación con JWT y autorización por roles (`USER` / `ADMIN`).
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+Resuelve el challenge [Backend Nest Ssr. Test](https://conexatech.notion.site/Backend-Nest-Ssr-Test-d3fa3d4c614249b2afeac5d8cf98784f).
 
-## Description
+- **Repositorio:** https://github.com/garciagiorgini/intramed-challenge
+- **Documentación Swagger (local):** http://localhost:3000/api/docs
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+---
 
-## Project setup
+## Stack
 
-```bash
-$ npm install
+| Área | Tecnología |
+| --- | --- |
+| Framework | NestJS 12, TypeScript |
+| Base de datos | PostgreSQL 16 + Prisma ORM 6 |
+| Auth | `@nestjs/jwt`, Passport (`passport-jwt`), hash de contraseñas con Argon2 |
+| Validación | `class-validator` / `class-transformer` (`ValidationPipe` global con `whitelist` y `forbidNonWhitelisted`) |
+| Integración externa | `@nestjs/axios` contra `https://www.swapi.tech/api` |
+| Documentación | Swagger (`@nestjs/swagger` con el plugin del CLI) |
+| Tests | Vitest + Supertest |
+| Infra local | Docker Compose (Postgres + Redis) |
+
+---
+
+## Arquitectura
+
+Cada módulo de dominio separa **aplicación**, **dominio** e **infraestructura**. Los servicios dependen de una interfaz de repositorio que se inyecta por token (`MOVIES_REPOSITORY`, `USERS_REPOSITORY`). La implementación concreta es Prisma, así que se puede reemplazar o mockear sin tocar la lógica de negocio.
+
+```
+src/
+├── auth/                     # Registro, login, estrategia JWT y JwtAuthGuard
+│   ├── dto/                  # RegisterDto, LoginDto
+│   ├── guards/
+│   └── strategies/
+├── common/
+│   ├── decorators/           # @Roles(...)
+│   └── guards/               # RolesGuard
+├── movies/
+│   ├── application/          # MoviesService (lógica de negocio)
+│   ├── domain/               # Interfaz MoviesRepository + token
+│   ├── infrastructure/       # PrismaMoviesRepository
+│   ├── dto/
+│   └── movies.controller.ts
+├── users/                    # Misma estructura: application / domain / infrastructure
+├── swapi/
+│   ├── swapi.client/         # Cliente HTTP contra SWAPI
+│   ├── sync.processor/       # Mapeo SWAPI → modelo Movie
+│   ├── swapi-sync/           # Orquesta la sincronización (upsert por externalId)
+│   └── swapi-sync.controller.ts
+└── prisma/                   # PrismaService / PrismaModule
+prisma/
+├── schema.prisma
+├── migrations/
+└── seed.ts                   # Crea o actualiza el usuario ADMIN
 ```
 
-## Compile and run the project
+**Sincronización con SWAPI.** `POST /api/admin/movies/sync` obtiene `/films` de swapi.tech, mapea cada película y hace un *upsert* por `externalId`, el `uid` de SWAPI. Por eso es idempotente: si se ejecuta varias veces, actualiza los registros en lugar de duplicarlos. Si una película falla, el error se registra y el resto sigue procesándose. La respuesta trae el detalle de las fallidas.
+
+---
+
+## Endpoints
+
+Todos los endpoints llevan el prefijo `/api`.
+
+| Método | Ruta | Acceso | Descripción |
+| --- | --- | --- | --- |
+| `POST` | `/api/auth/register` | Público | Registra un usuario con rol `USER` |
+| `POST` | `/api/auth/login` | Público | Devuelve `access_token` (JWT) |
+| `GET` | `/api/movies` | Público | Lista las películas |
+| `GET` | `/api/movies/:id` | `USER` o `ADMIN` | Detalle de una película |
+| `POST` | `/api/movies` | `ADMIN` | Crea una película |
+| `PATCH` | `/api/movies/:id` | `ADMIN` | Actualiza una película |
+| `DELETE` | `/api/movies/:id` | `ADMIN` | Elimina una película |
+| `POST` | `/api/admin/movies/sync` | `ADMIN` | Sincroniza las películas desde SWAPI |
+
+Códigos de error:
+
+- `400`: validación fallida.
+- `401`: sin token o con un token inválido o vencido.
+- `403`: el rol no alcanza.
+- `404`: la película no existe.
+- `409`: el email ya está registrado.
+- `502`: falla al consultar SWAPI.
+
+**Reglas de validación**
+
+- Registro: email válido y contraseña de 12 a 128 caracteres. El email se normaliza a minúsculas.
+- Película: `title` es obligatorio. `episodeId` (entero ≥ 1), `openingCrawl`, `director`, `producer`, `releaseDate` (ISO `YYYY-MM-DD`) y los arrays `characters`, `planets`, `starships`, `vehicles` y `species` son opcionales.
+- Se rechazan los campos que no figuran en el DTO.
+
+La documentación interactiva completa está en **Swagger**: http://localhost:3000/api/docs. Para usar los endpoints protegidos, hacé login, copiá el `access_token` y pegalo en **Authorize**.
+
+---
+
+## Cómo ejecutarlo localmente
+
+### Requisitos
+
+- Node.js 22 o superior
+- Docker y Docker Compose
+
+### 1. Instalar dependencias
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+npm install
 ```
 
-## Run tests
+### 2. Variables de entorno
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+cp .env.example .env
 ```
 
-## Deployment
+| Variable | Descripción | Default |
+| --- | --- | --- |
+| `DATABASE_URL` | Conexión a Postgres | coincide con `compose.yml` |
+| `REDIS_HOST` / `REDIS_PORT` | Conexión a Redis | `localhost` / `6379` |
+| `JWT_SECRET` | Clave de firma del JWT. **Cambiala por un valor largo y aleatorio** | — |
+| `JWT_EXPIRES_IN` | Vencimiento del token | `15m` |
+| `PORT` | Puerto HTTP | `3000` |
+| `SWAPI_BASE_URL` | URL base de SWAPI (opcional) | `https://www.swapi.tech/api` |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Credenciales del admin que crea el seed | — |
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+### 3. Levantar Postgres y Redis
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+docker compose up -d
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+### 4. Migraciones y usuario administrador
 
-## Observability
+```bash
+npx prisma migrate deploy   # aplica las migraciones
+npx prisma generate         # genera el cliente de Prisma
+npx tsx prisma/seed.ts      # crea o actualiza el usuario ADMIN definido en .env
+```
 
-In production applications, observability is essential for understanding how your system behaves, detecting issues early, and maintaining reliable performance.
+> Los usuarios que se registran por `/api/auth/register` siempre reciben el rol `USER`. El único `ADMIN` es el que crea el seed.
 
-[NestJS Observe](https://observe.nestjs.com) automatically instruments your NestJS application, giving you deep visibility into your system with minimal setup:
+### 5. Iniciar la API
 
-- **Distributed tracing:** Follow requests across services and understand how they flow through your system.
-- **Waterfall analysis:** Visualize request execution and identify slow operations, bottlenecks, and unexpected delays.
-- **Performance analysis:** Analyze application performance in real time and quickly pinpoint areas that need optimization.
-- **Metrics:** Track key application and infrastructure metrics to understand system health and performance trends.
-- **Logging:** Centralize and correlate logs with traces and other telemetry to make debugging easier.
-- **Error tracking:** Detect errors quickly and investigate their root causes with the surrounding context.
-- **SLA monitoring:** Track service-level objectives and identify when your application is approaching or exceeding defined thresholds.
-- **Alarms and alerts:** Set up alerts for critical errors, performance degradation, SLA violations, and other anomalies so your team can react quickly.
+```bash
+npm run start:dev     # modo watch
+# o
+npm run build && npm run start:prod
+```
 
-This project is already instrumented. Create a free account at [observe.nestjs.com](https://observe.nestjs.com), add an application, and paste the generated app key and secret into the `ObserveModule.forRoot()` call in `src/app.module.ts`.
+La API queda en `http://localhost:3000/api` y Swagger en `http://localhost:3000/api/docs`.
 
-The free plan needs no payment details and covers 300,000 events a month. You can also browse the [live demo](https://www.observe-demo.nestjs.com/dashboard) first - the whole dashboard over a busy service's data, with nothing to install.
+---
 
-## Resources
+## Probar el flujo completo
 
-Check out a few resources that may come in handy when working with NestJS:
+```bash
+# 1. Registrar un usuario común
+curl -X POST http://localhost:3000/api/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"usuario@example.com","password":"una-clave-segura-123"}'
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Auto-instrument your application with [NestJS Observe](https://observe.nestjs.com). Distributed tracing, metrics, and logging made easy. Error tracking and performance monitoring for your NestJS applications.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+# 2. Login como admin (credenciales del .env)
+ADMIN_TOKEN=$(curl -s -X POST http://localhost:3000/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@example.com","password":"una-clave-local-segura"}' | jq -r .access_token)
 
-## Support
+# 3. Sincronizar películas desde SWAPI
+curl -X POST http://localhost:3000/api/admin/movies/sync \
+  -H "Authorization: Bearer $ADMIN_TOKEN"
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+# 4. Listar películas (público)
+curl http://localhost:3000/api/movies
 
-## Stay in touch
+# 5. Login como usuario común y ver el detalle
+USER_TOKEN=$(curl -s -X POST http://localhost:3000/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"usuario@example.com","password":"una-clave-segura-123"}' | jq -r .access_token)
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+curl http://localhost:3000/api/movies/<MOVIE_ID> -H "Authorization: Bearer $USER_TOKEN"
 
-## License
+# 6. Un usuario común no puede crear → 403
+curl -X POST http://localhost:3000/api/movies \
+  -H "Authorization: Bearer $USER_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"title":"Rogue One"}'
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+# 7. El admin sí puede crear → 201
+curl -X POST http://localhost:3000/api/movies \
+  -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"title":"Rogue One","director":"Gareth Edwards","releaseDate":"2016-12-16"}'
+```
+
+En [curls.txt](curls.txt) hay más ejemplos.
+
+---
+
+## Tests
+
+```bash
+npm run test       # tests unitarios (Vitest)
+npm run test:cov   # tests con reporte de cobertura en ./coverage
+npm run test:e2e   # tests end-to-end (requieren Postgres y Redis levantados y las migraciones aplicadas)
+```
+
+### Unitarios
+
+No necesitan base de datos ni Redis porque los repositorios y el cliente HTTP se mockean. Cubren:
+
+- **Auth:** registro (email duplicado, normalización, hash) y login (credenciales inválidas, emisión del token).
+- **Movies:**
+  - Lógica del servicio: creación, actualización parcial, `404`, conversión de fechas.
+  - Controlador.
+  - **Restricción de acceso:**
+    - Metadata de `@Roles` y de los guards.
+    - Comportamiento de `RolesGuard`.
+    - Pruebas HTTP con Supertest que verifican `201`/`200` para `ADMIN` y `403` para `USER`.
+- **SWAPI:** cliente HTTP (respuestas válidas, inválidas y errores → `502`), mapeo de datos y sincronización con errores parciales.
+- **Users y Prisma:** servicios y repositorios.
+
+### End-to-end
+
+[test/app.e2e-spec.ts](test/app.e2e-spec.ts) levanta la aplicación completa contra la base real y recorre el flujo:
+
+- Registro, email duplicado (`409`), validación (`400`) y login (`401` y token).
+- CRUD de películas con tokens de `USER` y `ADMIN`: verifica `401`, `403`, `200`/`201` y `404` después de borrar.
+- Que Swagger exponga la documentación.
+
+Crea su propio admin y usuario con emails únicos y los borra al terminar, así no ensucia los datos locales.
+
+---
+
+## Decisiones de diseño
+
+- **Patrón Repository con inyección por token.** Desacopla la lógica de negocio de Prisma y permite testear los servicios sin base de datos.
+- **Argon2** para el hash de contraseñas. El login devuelve el mismo error para "usuario inexistente" y "contraseña incorrecta", así no se puede averiguar qué emails están registrados.
+- **`GET /movies/:id` para `USER` y `ADMIN`.** La consigna pide que el detalle sea para "Usuarios Regulares". Se interpretó como "usuarios logueados" y se permite también al administrador, porque sería raro que el admin pudiera editar o borrar una película pero no verla. El endpoint declara los dos roles con `@Roles(Role.USER, Role.ADMIN)`, así que quitar el acceso del admin es un cambio de una línea.
+- **Roles desde el JWT.** `JwtStrategy` pone `{ userId, email, role }` en `request.user` y `RolesGuard` lo compara con la metadata de `@Roles(...)`. Los accesos denegados quedan registrados en el log.
+- **Sincronización idempotente** por `externalId`, el `uid` de SWAPI. Las películas creadas a mano tienen `externalId = null` y la sincronización no las toca.
+- **Sincronización por endpoint y no por cron.** La consigna permite cualquiera de las dos. Con un endpoint, el administrador decide cuándo sincronizar.

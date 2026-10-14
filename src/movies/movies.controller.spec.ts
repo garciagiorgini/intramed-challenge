@@ -123,6 +123,40 @@ describe('MoviesController', () => {
       } as unknown as ExecutionContext;
     };
 
+    describe('GET /movies/:id (Detalle de película)', () => {
+      it('debe permitir los roles USER y ADMIN en su metadata', () => {
+        const roles = reflector.get<Role[]>(ROLES_KEY, controller.findOne);
+        expect(roles).toEqual([Role.USER, Role.ADMIN]);
+      });
+
+      it('debe tener asignados los guards JwtAuthGuard y RolesGuard', () => {
+        const guards = Reflect.getMetadata('__guards__', controller.findOne);
+        expect(guards).toContain(JwtAuthGuard);
+        expect(guards).toContain(RolesGuard);
+      });
+
+      it('permite el acceso a un USER regular', () => {
+        const context = createMockExecutionContext(controller.findOne, {
+          email: 'user@example.com',
+          role: Role.USER,
+        });
+        expect(rolesGuard.canActivate(context)).toBe(true);
+      });
+
+      it('permite el acceso a un ADMIN', () => {
+        const context = createMockExecutionContext(controller.findOne, {
+          email: 'admin@example.com',
+          role: Role.ADMIN,
+        });
+        expect(rolesGuard.canActivate(context)).toBe(true);
+      });
+
+      it('deniega el acceso (ForbiddenException) si no hay usuario autenticado', () => {
+        const context = createMockExecutionContext(controller.findOne, undefined);
+        expect(() => rolesGuard.canActivate(context)).toThrow(ForbiddenException);
+      });
+    });
+
     describe('POST /movies (Crear nueva película)', () => {
       it('debe tener configurado el rol ADMIN en su metadata', () => {
         const roles = reflector.get<Role[]>(ROLES_KEY, controller.create);
@@ -267,6 +301,18 @@ describe('MoviesController', () => {
 
     afterAll(async () => {
       await app.close();
+    });
+
+    it('GET /movies/:id: Usuario común puede ver el detalle (200 OK)', async () => {
+      currentUser = { email: 'user@example.com', role: Role.USER };
+
+      await request(app.getHttpServer()).get('/movies/1').expect(200);
+    });
+
+    it('GET /movies/:id: Administrador puede ver el detalle (200 OK)', async () => {
+      currentUser = { email: 'admin@example.com', role: Role.ADMIN };
+
+      await request(app.getHttpServer()).get('/movies/1').expect(200);
     });
 
     it('POST /movies: Administrador puede crear (201 Created)', async () => {
